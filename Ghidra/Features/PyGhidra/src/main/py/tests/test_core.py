@@ -299,3 +299,51 @@ def test_import_ghidra_base_java_packages():
         import pdb_.doesntexist
     except ImportError:
         pass
+
+
+@pytest.mark.parametrize("existing_project", [False, True])
+@pytest.mark.parametrize("invalid_setting", ["language", "compiler"])
+def test_failed_project_setup_releases_project_lock(shared_datadir, tmp_path, existing_project,
+                                                    invalid_setting):
+    if not pyghidra.started():
+        pyghidra.start()
+    from ghidra.base.project import GhidraProject
+
+    project_name = "SetupFailure"
+    location = str(tmp_path)
+    if existing_project:
+        project = GhidraProject.createProject(location, project_name, False)
+        project.close()
+    settings = {"language": TEST_LANGUAGE, "compiler": TEST_COMPILER}
+    settings[invalid_setting] = "invalid"
+    with pytest.raises(ValueError):
+        with pyghidra.open_program(
+                shared_datadir / EXE_NAME, project_location=tmp_path,
+                project_name=project_name, analyze=False, nested_project_location=False,
+                **settings):
+            pytest.fail("Invalid language/compiler must not enter the program context")
+
+    reopened = GhidraProject.openProject(location, project_name, True)
+    try:
+        assert not reopened.getProject().isClosed()
+    finally:
+        reopened.close()
+
+
+def test_successful_project_setup_transfers_ownership(shared_datadir, tmp_path):
+    if not pyghidra.started():
+        pyghidra.start()
+    from pyghidra.core import _setup_project
+
+    project, program = _setup_project(
+        shared_datadir / EXE_NAME, project_location=tmp_path, project_name="SetupSuccess",
+        language=TEST_LANGUAGE, compiler=TEST_COMPILER, nested_project_location=False)
+    underlying_project = project.getProject()
+    try:
+        assert not underlying_project.isClosed()
+        assert not program.isClosed()
+        assert program.getName() == EXE_NAME
+    finally:
+        project.close()
+    assert underlying_project.isClosed()
+    assert program.isClosed()
