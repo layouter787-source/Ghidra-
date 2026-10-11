@@ -299,3 +299,63 @@ def test_import_ghidra_base_java_packages():
         import pdb_.doesntexist
     except ImportError:
         pass
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Requires /proc/self/fd descriptor inspection")
+@pytest.mark.parametrize("compilation_error", [False, True])
+def test_java_compile_releases_dependency_jar(tmp_path: Path, compilation_error):
+    pyghidra.start()
+    import os
+    from java.lang import System
+    from java.io import File
+    from java.net import URLClassLoader
+    from pyghidra.javac import java_compile
+
+    dependency = tmp_path / "Dependency.java"
+    dependency.write_text(
+        "package owned; public class Dependency { "
+        "public static int value() { return 42; } }"
+    )
+    dependency_jar = tmp_path / "dependency.jar"
+    java_compile(dependency, dependency_jar)
+
+    def dependency_descriptors():
+        descriptors = []
+        for descriptor in Path("/proc/self/fd").iterdir():
+            try:
+                if os.readlink(descriptor) == str(dependency_jar):
+                    descriptors.append(descriptor.name)
+            except FileNotFoundError:
+                pass
+        return descriptors
+
+    assert not dependency_descriptors()
+    original_classpath = System.getProperty("java.class.path")
+    try:
+        System.setProperty("java.class.path", original_classpath + os.pathsep + str(dependency_jar))
+        consumer = tmp_path / "Consumer.java"
+        expression = "owned.Dependency.value()"
+        if compilation_error:
+            expression += " + missingSymbol"
+        consumer.write_text(
+            "public class Consumer { public static int value() { return "
+            + expression + "; } }"
+        )
+        output = tmp_path / "consumer.jar"
+        if compilation_error:
+            with pytest.raises(ValueError, match="missingSymbol"):
+                java_compile(consumer, output)
+            assert not output.exists()
+        else:
+            java_compile(consumer, output)
+            assert output.is_file()
+
+        # Inspect before loading the compiled class: its classloader also opens
+        # the dependency JAR, independently of the compiler's file manager.
+        assert not dependency_descriptors()
+        if not compilation_error:
+            urls = [File(str(path)).toURI().toURL() for path in (output, dependency_jar)]
+            with URLClassLoader(urls) as loader:
+                assert loader.loadClass("Consumer").getMethod("value").invoke(None) == 42
+    finally:
+        System.setProperty("java.class.path", original_classpath)
