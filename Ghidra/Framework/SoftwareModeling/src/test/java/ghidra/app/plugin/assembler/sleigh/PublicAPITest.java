@@ -30,6 +30,7 @@ import ghidra.program.model.address.Address;
 import ghidra.program.model.address.AddressOverflowException;
 import ghidra.program.model.lang.*;
 import ghidra.program.model.listing.*;
+import ghidra.program.model.symbol.SourceType;
 import ghidra.program.util.DefaultLanguageService;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
@@ -97,4 +98,33 @@ public class PublicAPITest extends AbstractGenericTest {
 		assertEquals("brds", result.get(0).getMnemonicString());
 		assertEquals("_add", result.get(1).getMnemonicString());
 	}
+
+	@Test
+	public void testAssembleWithDottedLabel() throws Exception {
+		checkBranchLabel("test.abcd");
+	}
+
+	@Test
+	public void testAssembleWithLeadingDotLabel() throws Exception {
+		checkBranchLabel(".local");
+	}
+
+	@Test
+	public void testAssembleWithOrdinaryLabel() throws Exception {
+		checkBranchLabel("test_abcd");
+	}
+
+	private void checkBranchLabel(String label) throws Exception {
+		program = new ProgramDB("test", toy, toy.getDefaultCompilerSpec(), this);
+		Address instructionAddress = addr(0x00400000);
+		Address targetAddress = addr(0x00400004);
+		try (Transaction tx = program.openTransaction("Create branch target label")) {
+			program.getSymbolTable().createLabel(targetAddress, label, SourceType.USER_DEFINED);
+		}
+		Assembler assembler = Assemblers.getAssembler(program);
+		byte[] literal = assembler.assembleLine(instructionAddress, "brds 0x00400004");
+		byte[] symbolic = assembler.assembleLine(instructionAddress, "brds " + label);
+		assertArrayEquals(literal, symbolic);
+	}
+
 }
