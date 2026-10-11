@@ -22,11 +22,14 @@
 package ghidra.util.datastruct;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertNull;
 
 import org.junit.Test;
 
 import generic.test.AbstractGenericTest;
+import ghidra.util.map.ObjectStorageAdapter;
 
 /**
  *
@@ -96,6 +99,56 @@ public class ByteArrayArrayTest extends AbstractGenericTest {
             }
         }
  
+    }
+
+
+    @Test
+    public void testMissingAtInitialCapacity() {
+        ByteArrayArray array = new ByteArrayArray();
+        assertNull(array.get(array.starts.length));
+        assertNull(array.get(array.starts.length + 1));
+        assertThrows(IndexOutOfBoundsException.class, () -> array.get(-1));
+        array.put(0, new byte[] { 1, 2 });
+        assertArrayEquals(new byte[] { 1, 2 }, array.get(0));
+        assertNull(array.get(array.starts.length));
+    }
+
+    @Test
+    public void testMissingAtCapacityAfterGrowthAndShrink() {
+        ByteArrayArray array = new ByteArrayArray();
+        array.put(8, new byte[] { 7, 8 });
+        int grownCapacity = array.starts.length;
+        assertNull(array.get(grownCapacity));
+        assertArrayEquals(new byte[] { 7, 8 }, array.get(8));
+        array.put(0, new byte[0]);
+        array.remove(8);
+        assertEquals(ByteArrayArray.MIN_SIZE, array.starts.length);
+        assertNull(array.get(array.starts.length));
+        assertArrayEquals(new byte[0], array.get(0));
+        array.put(4, new byte[] { 9 });
+        assertArrayEquals(new byte[] { 9 }, array.get(4));
+        assertNull(array.get(array.starts.length));
+    }
+
+    @Test
+    public void testMissingByteArrayAtCapacityThroughDataTable() {
+        DataTable table = new DataTable();
+        table.putByteArray(0, 0, new byte[] { 1, 2 });
+        assertNull(table.getByteArray(ByteArrayArray.MIN_SIZE, 0));
+        assertArrayEquals(new byte[] { 1, 2 }, table.getByteArray(0, 0));
+        table.putByteArray(ByteArrayArray.MIN_SIZE, 0, new byte[] { 3 });
+        assertArrayEquals(new byte[] { 3 }, table.getByteArray(ByteArrayArray.MIN_SIZE, 0));
+    }
+
+    @Test
+    public void testMissingByteArrayAtCapacityThroughObjectStorage() {
+        DataTable table = new DataTable();
+        new ObjectStorageAdapter(table, 0).putBytes(new byte[] { 4, 5 });
+        assertNull(new ObjectStorageAdapter(table, ByteArrayArray.MIN_SIZE).getBytes());
+        assertArrayEquals(new byte[] { 4, 5 }, new ObjectStorageAdapter(table, 0).getBytes());
+        new ObjectStorageAdapter(table, ByteArrayArray.MIN_SIZE).putBytes(new byte[] { 6 });
+        assertArrayEquals(new byte[] { 6 },
+            new ObjectStorageAdapter(table, ByteArrayArray.MIN_SIZE).getBytes());
     }
 
 }
