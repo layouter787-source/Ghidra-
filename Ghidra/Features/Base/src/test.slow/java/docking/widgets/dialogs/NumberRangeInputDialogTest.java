@@ -175,4 +175,49 @@ public class NumberRangeInputDialogTest extends AbstractDockingTest {
 	private JTextField getTextField(NumberRangeInputDialog theDialog) {
 		return theDialog.getTextField();
 	}
+
+	@Test
+	public void testIncompleteRangeIsRejected() {
+		setText("1:");
+		ok();
+		assertStatusText("Unable to parse as a number: '1:'");
+		assertTrue(dialog.isVisible());
+	}
+
+	@Test
+	public void testExtraRangeEndpointIsRejected() {
+		setText("1:2:3");
+		ok();
+		assertStatusText("Unable to parse as a number: '1:2:3'");
+		assertTrue(dialog.isVisible());
+	}
+
+	@Test
+	public void testReversedRangeIsRejected() {
+		setText("3:1");
+		ok();
+		assertStatusText("Unable to parse as a number: '3:1'");
+		assertTrue(dialog.isVisible());
+	}
+
+	@Test
+	public void testCorrectedInputDoesNotKeepEarlierPartialValues() {
+		setText("100, invalid");
+		ok();
+		assertStatusText("Unable to parse as a number: 'invalid'");
+		setText("4:6");
+		ok();
+		assertValues(4, 5, 6);
+	}
+
+	@Test
+	public void testMissingStartIsRejectedAndNegativeRangeRemainsValid() {
+		setText(":1");
+		ok();
+		assertStatusText("Unable to parse as a number: ':1'");
+		setText("-0x20:-0x1e");
+		ok();
+		assertValues(-32, -31, -30);
+	}
+
 }
