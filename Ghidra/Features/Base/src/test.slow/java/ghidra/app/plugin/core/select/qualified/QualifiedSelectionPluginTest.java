@@ -20,6 +20,10 @@ package ghidra.app.plugin.core.select.qualified;
 
 import static org.junit.Assert.*;
 
+import java.lang.reflect.Field;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 import javax.swing.JTree;
 import javax.swing.tree.TreePath;
 
@@ -43,6 +47,10 @@ import ghidra.program.model.listing.Program;
 import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.util.ProgramSelection;
 import ghidra.test.*;
+import ghidra.util.TaskUtilities;
+import ghidra.util.TrackedTaskListener;
+import ghidra.util.task.Task;
+import ghidra.util.task.TaskMonitor;
 
 public class QualifiedSelectionPluginTest extends AbstractGhidraHeadedIntegrationTest {
 
@@ -419,4 +427,56 @@ public class QualifiedSelectionPluginTest extends AbstractGhidraHeadedIntegratio
 		}
 	}
 
+	@Test
+	public void testCancelledDataSelectionPreservesSelection() throws Exception {
+		assertCancelledSelectionPreserved(selectDataAction, "Select Data");
+	}
+
+	@Test
+	public void testCancelledInstructionSelectionPreservesSelection() throws Exception {
+		assertCancelledSelectionPreserved(selectInstructionAction, "Select Instructions");
+	}
+
+	@Test
+	public void testCancelledUndefinedSelectionPreservesSelection() throws Exception {
+		assertCancelledSelectionPreserved(selectUndefinedAction, "Select Undefined");
+	}
+
+	private void assertCancelledSelectionPreserved(DockingActionIf action, String title)
+			throws Exception {
+		AddressSet addresses = new AddressSet(addr("010012d2"), addr("01001960"));
+		setSelection(addresses);
+		ProgramSelection before = new ProgramSelection(getCurrentSelection());
+		Field field = TaskUtilities.class.getDeclaredField("runningTasks");
+		field.setAccessible(true);
+		Map<?, ?> tasks = (Map<?, ?>) field.get(null);
+		AtomicBoolean cancelled = new AtomicBoolean();
+		TrackedTaskListener listener = new TrackedTaskListener() {
+			@Override
+			public void taskAdded(Task task) {
+				if (title.equals(task.getTaskTitle()) && cancelled.compareAndSet(false, true)) {
+					TaskMonitor monitor =
+						(TaskMonitor) tasks.get(task);
+					assertNotNull(monitor);
+					monitor.cancel();
+					assertTrue(monitor.isCancelled());
+				}
+			}
+
+			@Override
+			public void taskRemoved(Task task) {
+				// The launched task is allowed to complete normally after cancellation.
+			}
+		};
+		TaskUtilities.addTrackedTaskListener(listener);
+		try {
+			performAction(action, provider, true);
+			waitForSwing();
+			assertTrue("Actual selection task must have been cancelled", cancelled.get());
+			assertEquals(before, getCurrentSelection());
+		}
+		finally {
+			TaskUtilities.removeTrackedTaskListener(listener);
+		}
+	}
 }
