@@ -24,6 +24,9 @@ import org.junit.Test;
 
 import generic.test.AbstractGenericTest;
 import ghidra.util.NumericUtilities;
+import ghidra.program.model.data.*;
+import ghidra.program.model.address.Address;
+import ghidra.program.model.mem.ByteMemBufferImpl;
 
 public class ScalarTest extends AbstractGenericTest {
 
@@ -221,6 +224,45 @@ public class ScalarTest extends AbstractGenericTest {
 		Scalar scalar = new Scalar(0, 0);
 		scalar.testBit(0);
 		fail("Scalar testBit(0) should fail");
+	}
+
+
+	@Test
+	public void testZeroBitBigInteger() {
+		assertEquals(BigInteger.ZERO, new Scalar(0, 0).getBigInteger());
+		assertEquals(BigInteger.ZERO, new Scalar(0, 0, false).getBigInteger());
+	}
+
+	@Test
+	public void testZeroBitFieldValueCanBeEncoded() throws Exception {
+		for (boolean bigEndian : new boolean[] { false, true }) {
+			ByteMemBufferImpl memory =
+				new ByteMemBufferImpl(Address.NO_ADDRESS, new byte[] { 0 }, bigEndian);
+			StructureDataType structure = new StructureDataType("ZeroBitField", 0);
+			DataType bitfield =
+				structure.addBitField(IntegerDataType.dataType, 0, "zero", null).getDataType();
+			Object value = bitfield.getValue(memory, null, 0);
+			assertTrue(value instanceof Scalar);
+			assertEquals(0, ((Scalar) value).bitLength());
+			assertArrayEquals(new byte[4],
+				IntegerDataType.dataType.encodeValue(value, memory, null, 4));
+			assertArrayEquals(new byte[4],
+				UnsignedIntegerDataType.dataType.encodeValue(value, memory, null, 4));
+		}
+	}
+
+	@Test
+	public void testBigIntegerWidthBoundaries() {
+		assertEquals(BigInteger.valueOf(-1), new Scalar(1, 1, true).getBigInteger());
+		assertEquals(BigInteger.ONE, new Scalar(1, 1, false).getBigInteger());
+		assertEquals(BigInteger.ZERO, new Scalar(1, 0, true).getBigInteger());
+		assertEquals(BigInteger.ZERO, new Scalar(64, 0, false).getBigInteger());
+		assertEquals(BigInteger.valueOf(Long.MIN_VALUE),
+			new Scalar(64, Long.MIN_VALUE, true).getBigInteger());
+		assertEquals(BigInteger.valueOf(Long.MAX_VALUE),
+			new Scalar(64, Long.MAX_VALUE, true).getBigInteger());
+		assertEquals(new BigInteger("18446744073709551615"),
+			new Scalar(64, -1, false).getBigInteger());
 	}
 
 }
