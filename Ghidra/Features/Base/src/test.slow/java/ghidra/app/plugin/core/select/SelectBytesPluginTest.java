@@ -489,4 +489,48 @@ public class SelectBytesPluginTest extends AbstractGhidraHeadedIntegrationTest {
 			}
 		}
 	}
+
+	@Test
+	public void testForwardZeroLengthPreservesSelection() throws Exception {
+		assertZeroLengthPreservesSelection(true, "0");
+	}
+
+	@Test
+	public void testBackwardZeroLengthPreservesSelection() throws Exception {
+		assertZeroLengthPreservesSelection(false, "0");
+	}
+
+	@Test
+	public void testForwardHexZeroLengthPreservesSelection() throws Exception {
+		assertZeroLengthPreservesSelection(true, "0x0");
+	}
+
+	@Test
+	public void testBackwardHexZeroLengthPreservesSelection() throws Exception {
+		assertZeroLengthPreservesSelection(false, "0x0");
+	}
+
+	private void assertZeroLengthPreservesSelection(boolean forward, String text) throws Exception {
+		openProgram();
+		goTo(addr(0x1006420));
+		ProgramSelection selection = new ProgramSelection(addr(0x1006420), addr(0x1006425));
+		runSwing(() -> browser.getProvider().setSelection(selection));
+		SelectBytesDialog dialog = showDialog();
+		if (forward) {
+			pressSelectForward(dialog);
+		}
+		else {
+			pressSelectBackward(dialog);
+		}
+		IntegerTextField inputField =
+			(IntegerTextField) getInstanceField("lengthField", dialog);
+		runSwing(() -> inputField.setText(text));
+		assertEquals(java.math.BigInteger.ZERO, runSwing(() -> inputField.getValue()));
+		assertEquals(selection, browser.getCurrentSelection());
+		pressSelectBytes(dialog);
+		waitForSwing();
+		assertEquals("length must be > 0", dialog.getStatusText());
+		assertEquals(selection, browser.getCurrentSelection());
+		close(dialog);
+	}
 }
