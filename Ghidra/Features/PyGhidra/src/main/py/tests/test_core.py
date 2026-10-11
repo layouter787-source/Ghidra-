@@ -299,3 +299,45 @@ def test_import_ghidra_base_java_packages():
         import pdb_.doesntexist
     except ImportError:
         pass
+
+
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("behavior", ["ordinary", "remove", "raise", "move", "duplicates"])
+def test_script_path_cleanup_preserves_script_changes(tmp_path: Path, monkeypatch, behavior, existing):
+    if getattr(sys.flags, "safe_path", False):
+        pytest.skip("Safe-path mode does not inject a script directory")
+    script_path = tmp_path / "path_changes.py"
+    script_root = str(tmp_path)
+    original_path = sys.path[:]
+    original_argv = sys.argv
+    existing_root = str(tmp_path)
+    if existing:
+        sys.path.append(existing_root)
+    bodies = {
+        "ordinary": "pass",
+        "remove": "sys.path.pop(0)",
+        "raise": "sys.path.pop(0)\nraise RuntimeError('owned script failure')",
+        "move": "sys.path.append(sys.path.pop(0))",
+        "duplicates": "sys.path.insert(0, str(__import__('pathlib').Path(__file__).parent))",
+    }
+    monkeypatch.setattr(sys, "_pyghidra_cleanup_test_path", None, raising=False)
+    script_path.write_text(
+        "import sys\nsys._pyghidra_cleanup_test_path = sys.path[0]\n"
+        + bodies[behavior] + "\n"
+    )
+    try:
+        if behavior == "raise":
+            with pytest.raises(RuntimeError, match="owned script failure"):
+                pyghidra.run_script(None, script_path)
+        else:
+            pyghidra.run_script(None, script_path)
+        assert sys.argv is original_argv
+        roots = [entry for entry in sys.path if entry == script_root]
+        assert all(entry is not sys._pyghidra_cleanup_test_path for entry in roots)
+        if existing:
+            assert any(entry is existing_root for entry in roots)
+        assert len(roots) == int(existing) + int(behavior == "duplicates")
+        if behavior == "duplicates":
+            assert sys.path[0] == script_root
+    finally:
+        sys.path[:] = original_path
