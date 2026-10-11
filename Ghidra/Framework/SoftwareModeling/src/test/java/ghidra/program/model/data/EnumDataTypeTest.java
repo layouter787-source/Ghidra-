@@ -17,6 +17,9 @@ package ghidra.program.model.data;
 
 import static org.junit.Assert.*;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+
 import org.junit.*;
 
 import ghidra.program.model.address.Address;
@@ -294,4 +297,52 @@ public class EnumDataTypeTest {
 		assertTrue(enumDt.contains(1));
 		assertFalse(enumDt.contains(3));
 	}
+
+	@Test
+	public void testEightByteCompoundKeepsUnnamedBits() {
+		EnumDataType enumeration = new EnumDataType("Flags", 8);
+		enumeration.add("FLAG", 1);
+		assertMemoryRepresentation(enumeration, 3, "FLAG | 2h");
+		assertMemoryRepresentation(enumeration, 0x10000000001L, "FLAG | 10000000000h");
+		assertMemoryRepresentation(enumeration, Long.MIN_VALUE | 1, "FLAG | 8000000000000000h");
+	}
+
+	@Test
+	public void testEightByteUnnamedValueRendersHex() {
+		EnumDataType enumeration = new EnumDataType("Flags", 8);
+		enumeration.add("FLAG", 1);
+		assertMemoryRepresentation(enumeration, 2, "2h");
+		assertMemoryRepresentation(enumeration, 0x10000000000L, "10000000000h");
+		assertMemoryRepresentation(enumeration, Long.MIN_VALUE, "8000000000000000h");
+	}
+
+	@Test
+	public void testNamedFlagsAndSmallerWidthResidualBits() {
+		for (int width : new int[] { 1, 2, 4, 8 }) {
+			EnumDataType enumeration = new EnumDataType("Flags", width);
+			enumeration.add("FLAG", 1);
+			assertMemoryRepresentation(enumeration, 1, "FLAG");
+			assertMemoryRepresentation(enumeration, 0, "0");
+			if (width < 8) {
+				assertMemoryRepresentation(enumeration, 3, "FLAG | 2h");
+			}
+			enumeration.add("OTHER", 2);
+			assertMemoryRepresentation(enumeration, 3, "FLAG | OTHER");
+		}
+	}
+
+	private void assertMemoryRepresentation(EnumDataType enumeration, long value, String expected) {
+		for (ByteOrder order : new ByteOrder[] { ByteOrder.BIG_ENDIAN, ByteOrder.LITTLE_ENDIAN }) {
+			ByteBuffer storage = ByteBuffer.allocate(8).order(order);
+			storage.putLong(value);
+			int width = enumeration.getLength();
+			byte[] bytes = new byte[width];
+			System.arraycopy(storage.array(), order == ByteOrder.BIG_ENDIAN ? 8 - width : 0,
+				bytes, 0, width);
+			ByteMemBufferImpl memory = new ByteMemBufferImpl(Address.NO_ADDRESS, bytes,
+				order == ByteOrder.BIG_ENDIAN);
+			assertEquals(expected, enumeration.getRepresentation(memory, null, width));
+		}
+	}
+
 }
