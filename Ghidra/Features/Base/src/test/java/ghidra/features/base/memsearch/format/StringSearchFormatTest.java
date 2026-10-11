@@ -18,6 +18,10 @@ package ghidra.features.base.memsearch.format;
 import static org.junit.Assert.*;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+
+import ghidra.features.base.memsearch.bytesequence.ByteArrayByteSequence;
+import ghidra.util.bytesearch.ExtendedByteSequence;
 
 import org.junit.Test;
 
@@ -160,6 +164,61 @@ public class StringSearchFormatTest extends AbstractSearchFormatTest {
 		byte[] bytes = matcher.getBytes();
 		byte[] expectedBytes = string.getBytes();
 		assertArrayEquals(expectedBytes, bytes);
+	}
+
+
+	private void assertInsensitiveUtf8(String input, String expected, int... letterOffsets) {
+		settings = settings.withStringCharset(StandardCharsets.UTF_8).withCaseSensitive(false);
+		matcher = parse(input);
+		byte[] expectedBytes = expected.getBytes(StandardCharsets.UTF_8);
+		assertArrayEquals(expectedBytes, matcher.getBytes());
+		byte[] masks = new byte[expectedBytes.length];
+		Arrays.fill(masks, (byte) 0xff);
+		for (int offset : letterOffsets) {
+			masks[offset] = (byte) 0xdf;
+		}
+		assertArrayEquals(masks, matcher.getMask());
+		ExtendedByteSequence target = new ExtendedByteSequence(
+			new ByteArrayByteSequence(expectedBytes), null, null, 0);
+		assertTrue(matcher.match(target).iterator().hasNext());
+	}
+
+	@Test
+	public void testInsensitiveUtf8LetterAfterTwoByteCharacter() {
+		assertInsensitiveUtf8("éa", "éA", 2);
+	}
+
+	@Test
+	public void testInsensitiveUtf8LetterAfterThreeByteCharacter() {
+		assertInsensitiveUtf8("€b", "€B", 3);
+	}
+
+	@Test
+	public void testInsensitiveUtf8LetterAfterFourByteCharacter() {
+		assertInsensitiveUtf8("😀c", "😀C", 4);
+	}
+
+	@Test
+	public void testInsensitiveUtf8LettersAfterMixedCharacters() {
+		assertInsensitiveUtf8("éa€b😀c", "éA€B😀C", 2, 6, 11);
+		assertInsensitiveUtf8("é€😀a", "é€😀A", 9);
+	}
+
+	@Test
+	public void testSensitiveUtf8MixedCharactersKeepExactBytes() {
+		settings = settings.withStringCharset(StandardCharsets.UTF_8).withCaseSensitive(true);
+		matcher = parse("éa€b😀c");
+		byte[] expected = "éa€b😀c".getBytes(StandardCharsets.UTF_8);
+		assertArrayEquals(expected, matcher.getBytes());
+		byte[] masks = new byte[expected.length];
+		Arrays.fill(masks, (byte) 0xff);
+		assertArrayEquals(masks, matcher.getMask());
+		ExtendedByteSequence same = new ExtendedByteSequence(
+			new ByteArrayByteSequence(expected), null, null, 0);
+		assertTrue(matcher.match(same).iterator().hasNext());
+		ExtendedByteSequence differentCase = new ExtendedByteSequence(
+			new ByteArrayByteSequence("éA€B😀C".getBytes(StandardCharsets.UTF_8)), null, null, 0);
+		assertFalse(matcher.match(differentCase).iterator().hasNext());
 	}
 
 }
