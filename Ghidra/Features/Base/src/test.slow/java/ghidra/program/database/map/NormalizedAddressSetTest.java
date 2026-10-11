@@ -451,4 +451,53 @@ public class NormalizedAddressSetTest extends AbstractGhidraHeadedIntegrationTes
 		}
 	}
 
+
+	@Test
+	public void testContainedHighAddressRangeRemainsUnique() {
+		set.addRange(addr(0xfffffff0L), addr(0xffffffffL));
+		set.addRange(addr(0xfffffff8L), addr(0xffffffffL));
+		assertEquivalentRanges(new AddressSet(addr(0xfffffff0L), addr(0xffffffffL)));
+	}
+
+	@Test
+	public void testLowestAddressRangeCanGrowFromSameStart() {
+		set.addRange(addr(0), addr(2));
+		set.addRange(addr(0), addr(4));
+		assertEquivalentRanges(new AddressSet(addr(0), addr(4)));
+	}
+
+	@Test
+	public void testAdjacentAndInteriorRangesCoalesce() {
+		set.addRange(addr(0xfffffff0L), addr(0xfffffff7L));
+		set.addRange(addr(0xfffffff8L), addr(0xffffffffL));
+		set.addRange(addr(10), addr(12));
+		set.addRange(addr(13), addr(15));
+		set.addRange(addr(0), addr(0));
+		set.addRange(addr(1), addr(2));
+		AddressSet expected = new AddressSet(addr(0), addr(2));
+		expected.addRange(addr(10), addr(15));
+		expected.addRange(addr(0xfffffff0L), addr(0xffffffffL));
+		assertEquivalentRanges(expected);
+	}
+
+	private void assertEquivalentRanges(AddressSet expected) {
+		assertEquals(expected.getNumAddresses(), set.getNumAddresses());
+		assertEquals(expected.getNumAddressRanges(), set.getNumAddressRanges());
+		assertEquals(expected.getMinAddress(), set.getMinAddress());
+		assertEquals(expected.getMaxAddress(), set.getMaxAddress());
+		for (boolean forward : new boolean[] { false, true }) {
+			AddressRangeIterator actualRanges = set.getAddressRanges(forward);
+			AddressRangeIterator expectedRanges = expected.getAddressRanges(forward);
+			while (expectedRanges.hasNext()) {
+				assertTrue(actualRanges.hasNext());
+				assertEquals(expectedRanges.next(), actualRanges.next());
+			}
+			assertFalse(actualRanges.hasNext());
+		}
+		AddressIterator addresses = expected.getAddresses(true);
+		while (addresses.hasNext()) {
+			assertTrue(set.contains(addresses.next()));
+		}
+	}
+
 }
