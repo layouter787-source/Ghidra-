@@ -334,6 +334,26 @@ public class NumericUtilitiesTest {
 	}
 
 	@Test
+	public void testDecodeBigIntegerPositiveZero() {
+		assertEquals(BigInteger.ZERO, NumericUtilities.decodeBigInteger("+0"));
+	}
+
+	@Test
+	public void testDecodeBigIntegerNegativeZero() {
+		assertEquals(BigInteger.ZERO, NumericUtilities.decodeBigInteger("-0"));
+	}
+
+	@Test
+	public void testDecodeBigIntegerSignedRadixZeroControls() {
+		for (String sign : List.of("", "+", "-")) {
+			for (String zero : List.of("00", "000", "0x0", "0X0", "0b0", "0B0")) {
+				assertEquals(BigInteger.ZERO, NumericUtilities.decodeBigInteger(sign + zero));
+			}
+		}
+		assertEquals(BigInteger.valueOf(-99), NumericUtilities.decodeBigInteger("-0x63"));
+	}
+
+	@Test
 	public void testDecodeBigInteger() {
 		// Zero special cases
 		assertEquals(BigInteger.ZERO, NumericUtilities.decodeBigInteger("0"));
