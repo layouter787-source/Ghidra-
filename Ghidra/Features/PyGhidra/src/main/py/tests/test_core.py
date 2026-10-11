@@ -299,3 +299,36 @@ def test_import_ghidra_base_java_packages():
         import pdb_.doesntexist
     except ImportError:
         pass
+
+
+@pytest.mark.parametrize("override_line,active", [
+    ("# JAVA_HOME_OVERRIDE={path}", False),
+    ("  #JAVA_HOME_OVERRIDE={path}", False),
+    ("# Example: JAVA_HOME_OVERRIDE={path}", False),
+    ("  // JAVA_HOME_OVERRIDE={path}", False),
+    ("JAVA_HOME_OVERRIDE={path}", True),
+    ('JAVA_HOME_OVERRIDE="{path}"', True),
+])
+def test_launch_properties_commented_java_home(tmp_path: Path, monkeypatch, override_line, active):
+    environment_home = tmp_path / "environment-jdk"
+    properties_home = tmp_path / "previous jdk"
+    monkeypatch.setenv("JAVA_HOME_OVERRIDE", str(environment_home))
+    # Construct against the real Ghidra installation before redirecting only
+    # the properties input to this test's owned configuration directory.
+    launcher = pyghidra.HeadlessPyGhidraLauncher()
+    assert Path(launcher.java_home) == environment_home
+    support = tmp_path / "support"
+    support.mkdir()
+    (support / "launch.properties").write_text(
+        override_line.format(path=properties_home) + "\n"
+        "# VMARGS=-Ddisabled.option=true\n"
+        "VMARGS=-Dkept.option=true\n"
+        'VMARGS=-Dquoted.option="some value"\n'
+    )
+    launcher._install_dir = tmp_path
+    launcher._dev_mode = False
+    arguments = launcher._jvm_args()
+    assert Path(launcher.java_home) == (properties_home if active else environment_home)
+    assert "-Dkept.option=true" in arguments
+    assert "-Dquoted.option=some value" in arguments
+    assert "-Ddisabled.option=true" not in arguments
