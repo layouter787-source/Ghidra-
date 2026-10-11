@@ -27,5 +27,6 @@ apply from: "$rootProject.projectDir/gradle/processorProject.gradle"
 
 dependencies {
 	api project(':Base')
+	testRuntimeOnly project(':Dalvik') // Load the real Dalvik compiler-spec injection library.
 }
 
