@@ -20,6 +20,11 @@ import static org.junit.Assert.*;
 import org.junit.Test;
 
 import ghidra.features.base.memsearch.matcher.UserInputByteMatcher;
+import ghidra.features.base.memsearch.matcher.SearchData;
+import ghidra.features.base.memsearch.scan.Scanner;
+import ghidra.features.base.memsearch.searcher.MemoryMatch;
+import ghidra.program.model.address.AddressSpace;
+import ghidra.program.model.address.GenericAddressSpace;
 
 public class FloatSearchFormatTest extends AbstractSearchFormatTest {
 	public FloatSearchFormatTest() {
@@ -196,6 +201,70 @@ public class FloatSearchFormatTest extends AbstractSearchFormatTest {
 
 	private FloatSearchFormat getFloatFormat() {
 		return (FloatSearchFormat) format;
+	}
+
+
+	private void assertScan(String previous, String current, int expectedComparison) {
+		byte[] previousBytes = parse(previous).getBytes();
+		byte[] currentBytes = parse(current).getBytes();
+		assertEquals(expectedComparison,
+			Integer.signum(format.compareValues(currentBytes, previousBytes, settings)));
+		GenericAddressSpace space = new GenericAddressSpace("test", 32, AddressSpace.TYPE_RAM, 0);
+		MemoryMatch<SearchData> match = new MemoryMatch<>(space.getAddress(0), previousBytes,
+			new SearchData("test", previous, settings));
+		match.updateBytes(currentBytes);
+		assertEquals(expectedComparison == 0, Scanner.EQUALS.accept(match));
+		assertEquals(expectedComparison != 0, Scanner.NOT_EQUALS.accept(match));
+		assertEquals(expectedComparison > 0, Scanner.INCREASED.accept(match));
+		assertEquals(expectedComparison < 0, Scanner.DECREASED.accept(match));
+	}
+
+	@Test
+	public void testScanChangedValuesAfterLeadingNaNs() {
+		for (SearchFormat searchFormat :
+				new SearchFormat[] { SearchFormat.FLOAT, SearchFormat.DOUBLE }) {
+			format = searchFormat;
+			for (boolean bigEndian : new boolean[] { true, false }) {
+				settings = settings.withSearchFormat(format).withBigEndian(bigEndian);
+				assertScan("NaN 1", "NaN 2", 1);
+				assertScan("NaN 1", "NaN 0", -1);
+				assertScan("NaN NaN 1", "NaN NaN 2", 1);
+			}
+		}
+	}
+
+	@Test
+	public void testScanChangedValuesAfterMiddleNaN() {
+		for (SearchFormat searchFormat :
+				new SearchFormat[] { SearchFormat.FLOAT, SearchFormat.DOUBLE }) {
+			format = searchFormat;
+			for (boolean bigEndian : new boolean[] { true, false }) {
+				settings = settings.withSearchFormat(format).withBigEndian(bigEndian);
+				assertScan("3 NaN 1", "3 NaN 2", 1);
+				assertScan("3 NaN 1", "3 NaN 0", -1);
+			}
+		}
+	}
+
+	@Test
+	public void testScanNaNsInfinitiesAndSignedZeroControls() {
+		for (SearchFormat searchFormat :
+				new SearchFormat[] { SearchFormat.FLOAT, SearchFormat.DOUBLE }) {
+			format = searchFormat;
+			for (boolean bigEndian : new boolean[] { true, false }) {
+				settings = settings.withSearchFormat(format).withBigEndian(bigEndian);
+				assertScan("NaN NaN 1", "NaN NaN 1", 0);
+				assertScan("1 NaN", "2 NaN", 1);
+				assertScan("1 NaN", "0 NaN", -1);
+				assertScan("1", "NaN", 1);
+				assertScan("NaN", "1", -1);
+				assertScan("-Infinity 1", "Infinity 1", 1);
+				assertScan("Infinity 1", "-Infinity 1", -1);
+				assertScan("Infinity 1", "Infinity 1", 0);
+				assertScan("0.0 1", "-0.0 1", 0);
+				assertScan("-0.0 1", "0.0 1", 0);
+			}
+		}
 	}
 
 }
