@@ -299,3 +299,75 @@ def test_import_ghidra_base_java_packages():
         import pdb_.doesntexist
     except ImportError:
         pass
+
+
+@pytest.fixture
+def walk_project_with_archive(shared_datadir, tmp_path):
+    if not pyghidra.started():
+        pyghidra.start()
+    from pyghidra.core import _setup_project
+    from ghidra.program.database.dtarchive import DataTypeArchiveFactory
+    from java.lang import Object
+
+    owned_project, program = _setup_project(
+        shared_datadir / EXE_NAME, project_location=tmp_path, project_name="WalkProject",
+        language=TEST_LANGUAGE, compiler=TEST_COMPILER, nested_project_location=False)
+    consumer = Object()
+    archive = None
+    try:
+        archive = DataTypeArchiveFactory.createProjectArchive(
+            owned_project.getRootFolder(), "Types", consumer)
+        archive.release(consumer)
+        archive = None
+        yield owned_project.getProject(), program
+    finally:
+        if archive is not None:
+            archive.release(consumer)
+        owned_project.close()
+
+
+@pytest.mark.parametrize("failure_location", ["callback", "filter"])
+def test_walk_programs_propagates_nested_program_error(walk_project_with_archive,
+                                                       failure_location):
+    project, program = walk_project_with_archive
+    consumers_before = list(program.getConsumerList())
+    errors = []
+
+    def consume_referenced_program(_file, _program):
+        try:
+            referenced_program, consumer = pyghidra.consume_program(project, "/Types")
+        except pyghidra.ProgramTypeError as error:
+            errors.append(error)
+            raise
+        referenced_program.release(consumer)
+        pytest.fail("The referenced datatype archive must not be accepted as a Program")
+
+    with pytest.raises(pyghidra.ProgramTypeError) as caught:
+        if failure_location == "callback":
+            pyghidra.walk_programs(project, consume_referenced_program)
+        else:
+            pyghidra.walk_programs(project, lambda _f, _p: pytest.fail("Callback must not run"),
+                                   program_filter=consume_referenced_program)
+    assert len(errors) == 1
+    assert caught.value is errors[0]
+    assert '"/Types" exists but is not a Program' in str(caught.value)
+    assert list(program.getConsumerList()) == consumers_before
+    assert not program.isClosed()
+    assert not project.isClosed()
+
+
+def test_walk_programs_skips_actual_nonprograms(walk_project_with_archive):
+    project, program = walk_project_with_archive
+    consumers_before = list(program.getConsumerList())
+    visited = []
+    pyghidra.walk_programs(project, lambda file, _program: visited.append(str(file.getName())))
+    assert visited == [EXE_NAME]
+    assert list(program.getConsumerList()) == consumers_before
+
+
+def test_walk_programs_false_filter_does_not_call_callback(walk_project_with_archive):
+    project, program = walk_project_with_archive
+    consumers_before = list(program.getConsumerList())
+    pyghidra.walk_programs(project, lambda _f, _p: pytest.fail("Rejected program must be skipped"),
+                           program_filter=lambda _f, _p: False)
+    assert list(program.getConsumerList()) == consumers_before
