@@ -17,6 +17,8 @@ import abc
 import functools
 import importlib.metadata
 from pathlib import Path
+import shutil
+import zipfile
 import typing
 
 import jpype
@@ -180,3 +182,46 @@ class TestBadPlugin(PluginTest):
         assert cls.launcher
         extension_path = cls.launcher.extension_path
         assert not (extension_path / cls.__name__).exists()
+
+
+@pytest.mark.parametrize("existing_directory", [False, True])
+def test_failed_script_copy_preserves_installation_ownership(tmp_path, existing_directory):
+    launcher = pyghidra.HeadlessPyGhidraLauncher()
+    launcher._extension_path = tmp_path / "extensions"
+    details = pyghidra.ExtensionDetails(
+        name="RetryPlugin", description="Installation rollback test", author="")
+    source = tmp_path / "source"
+    shutil.copytree(Path(__file__).parent / "data" / "good_plugin", source)
+    scripts = source / "ghidra_scripts"
+    scripts.mkdir()
+    broken_script = scripts / "broken.py"
+    try:
+        broken_script.symlink_to(scripts / "missing.py")
+    except (NotImplementedError, OSError) as error:
+        pytest.skip(f"This host cannot create the symlink required for the copy-failure test: {error}")
+    installation = launcher.get_install_path(details.name)
+    sentinel = installation / "keep.txt"
+    if existing_directory:
+        installation.mkdir(parents=True)
+        sentinel.write_text("preexisting content")
+
+    with pytest.raises(shutil.Error):
+        launcher._install_plugin(source, details)
+
+    if existing_directory:
+        assert sentinel.read_text() == "preexisting content"
+        return
+
+    assert not installation.exists()
+    broken_script.unlink()
+    (scripts / "working.py").write_text("print('installed')")
+    assert launcher._install_plugin(source, details) is True
+    jar_path = installation / "lib" / "RetryPlugin.jar"
+    with zipfile.ZipFile(jar_path) as jar:
+        assert "ghidra/pyghidra/test/DummyTestRecognizer.class" in jar.namelist()
+    assert (installation / "extension.properties").is_file()
+    assert (installation / "Module.manifest").is_file()
+    assert (installation / "ghidra_scripts" / "working.py").read_text() == "print('installed')"
+    installed_jar = jar_path.read_bytes()
+    assert launcher._install_plugin(source, details) is False
+    assert jar_path.read_bytes() == installed_jar
