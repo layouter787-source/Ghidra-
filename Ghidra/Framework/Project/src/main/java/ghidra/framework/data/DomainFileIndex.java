@@ -62,7 +62,7 @@ class DomainFileIndex implements DomainFolderChangeListener {
 			}
 			else {
 				GhidraFile oldDf = (GhidraFile) projectData.getFile(oldPath);
-				if (oldDf == null) {
+				if (oldDf == null || !id.equals(oldDf.getFileID())) {
 					fileIdToPathIndex.put(id, newPath);
 				}
 				else {
@@ -101,7 +101,11 @@ class DomainFileIndex implements DomainFolderChangeListener {
 		TaskMonitor monitor = projectData.getProjectDisposalMonitor();
 		String filePath = fileIdToPathIndex.get(fileID);
 		if (filePath != null) {
-			return projectData.getFile(filePath);
+			DomainFile file = projectData.getFile(filePath);
+			if (file != null && fileID.equals(file.getFileID())) {
+				return file;
+			}
+			fileIdToPathIndex.remove(fileID);
 		}
 
 		boolean unsupportedOperation = false;
