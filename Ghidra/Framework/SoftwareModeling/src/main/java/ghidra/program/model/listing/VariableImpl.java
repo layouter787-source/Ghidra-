@@ -579,12 +579,11 @@ abstract class VariableImpl implements Variable {
 
 	private VariableStorage expandStorage(VariableStorage curStorage, int newSize, DataType type)
 			throws InvalidInputException {
-		List<Varnode> newList = new ArrayList<>();
 		Varnode[] varnodes = curStorage.getVarnodes();
 		int lastIndex = varnodes.length - 1;
 		varnodes[lastIndex] = expandVarnode(varnodes[lastIndex], newSize - curStorage.size(),
 			curStorage, newSize, type);
-		return new VariableStorage(program, newList);
+		return new VariableStorage(program, varnodes);
 	}
 
 	private Varnode shrinkVarnode(Varnode varnode, int sizeReduction, VariableStorage curStorage,
@@ -627,7 +626,7 @@ abstract class VariableImpl implements Variable {
 				}
 			}
 			if (bigEndian) {
-				vnAddr = vnAddr.add(newReg.getMinimumByteSize() - size);
+				vnAddr = newReg.getAddress().add(newReg.getMinimumByteSize() - size);
 				return new Varnode(vnAddr, size);
 			}
 		}
