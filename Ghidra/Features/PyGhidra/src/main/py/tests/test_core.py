@@ -299,3 +299,27 @@ def test_import_ghidra_base_java_packages():
         import pdb_.doesntexist
     except ImportError:
         pass
+
+
+@pytest.mark.parametrize("cancelled", [False, True])
+def test_analyze_completion_and_listener_cleanup(shared_datadir: Path, cancelled):
+    pyghidra.start()
+    from ghidra.app.plugin.core.analysis import AutoAnalysisManager
+    from ghidra.program.util import GhidraProgramUtilities
+    from ghidra.util.task import TaskMonitorAdapter
+
+    with pyghidra.open_program(shared_datadir / EXE_NAME, analyze=False) as api:
+        program = api.currentProgram
+        manager = AutoAnalysisManager.getAnalysisManager(program)
+        listener_field = AutoAnalysisManager.class_.getDeclaredField("listeners")
+        listener_field.setAccessible(True)
+        listeners = listener_field.get(manager)
+        original_count = listeners.size()
+        assert GhidraProgramUtilities.shouldAskToAnalyze(program)
+        for _ in range(2):
+            monitor = TaskMonitorAdapter(True)
+            if cancelled:
+                monitor.cancel()
+            pyghidra.analyze(program, monitor)
+            assert GhidraProgramUtilities.shouldAskToAnalyze(program) == cancelled
+            assert listeners.size() == original_count
