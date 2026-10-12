@@ -545,4 +545,46 @@ public class SourceFileTest extends AbstractSourceFileTest {
 				(byte) 0xee, (byte) 0xff }));
 	}
 
+	@Test
+	public void testDwarfHiddenDirectoryIdentity() throws Exception {
+		assertDwarfSourceIdentity("/..hidden/file.c", "/..hidden/file.c");
+	}
+
+	@Test
+	public void testDwarfDotPrefixFilenameIdentity() throws Exception {
+		assertDwarfSourceIdentity("/...", "/...");
+	}
+
+	@Test
+	public void testDwarfParentThenHiddenDirectoryIdentity() throws Exception {
+		assertDwarfSourceIdentity("/../..hidden/file.c", "/root_dir_1/..hidden/file.c");
+	}
+
+	@Test
+	public void testDwarfMultipleParentsThenDotPrefixIdentity() throws Exception {
+		assertDwarfSourceIdentity("/../../.../file.c", "/root_dir_2/.../file.c");
+	}
+
+	@Test
+	public void testDwarfConsumedArtificialRootSiblingIdentity() throws Exception {
+		assertDwarfSourceIdentity("./../root_dirx/file.c", "/root_dir_1/root_dirx/file.c");
+	}
+
+	private void assertDwarfSourceIdentity(String input, String expected) throws Exception {
+		String normalized = SourceFileUtils.normalizeDwarfPath(input, "root_dir");
+		assertEquals(expected, normalized);
+		SourceFile source = new SourceFile(normalized);
+		int tx = program.startTransaction("Import normalized DWARF source identity");
+		try {
+			assertTrue(sourceManager.addSourceFile(source));
+			sourceManager.addSourceMapEntry(source, 7, baseAddress, 1);
+		}
+		finally {
+			program.endTransaction(tx, true);
+		}
+		assertEquals(expected, sourceManager.getSourceMapEntries(baseAddress).get(0)
+			.getSourceFile().getPath());
+		assertEquals(7, sourceManager.getSourceMapEntries(baseAddress).get(0).getLineNumber());
+	}
+
 }
