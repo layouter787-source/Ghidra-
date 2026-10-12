@@ -769,7 +769,7 @@ public class DefineTable {
 			//    equivalent, return it
 			DataType candidateDT = openDTMgrs[i].getDataType(dt.getCategoryPath(), dt.getName());
 
-			if (candidateDT != null && candidateDT.isEquivalent(candidateDT)) {
+			if (candidateDT != null && candidateDT.isEquivalent(dt)) {
 				return candidateDT;
 			}
 		}
